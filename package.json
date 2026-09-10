@@ -1,0 +1,25 @@
+{
+  "name": "ceres-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "eve dev",
+    "build": "eve build",
+    "start": "eve start --host 0.0.0.0"
+  },
+  "dependencies": {
+    "ai": "latest",
+    "eve": "latest",
+    "pg": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/pg": "latest",
+    "typescript": "latest"
+  }
+}
