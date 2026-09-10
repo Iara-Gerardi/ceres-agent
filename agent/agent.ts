@@ -1,5 +1,7 @@
 import { defineAgent } from "eve";
 
+import { chatgpt } from "eve/models/openai";
 export default defineAgent({
-  model: "openai/gpt-5.4-mini",
+  model: chatgpt("gpt-5.6-sol"),
+  reasoning: "low",
 });

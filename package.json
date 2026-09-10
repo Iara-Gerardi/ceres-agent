@@ -20,6 +20,7 @@
   "devDependencies": {
     "@types/node": "latest",
     "@types/pg": "latest",
+    "microsandbox": "^0.5.10",
     "typescript": "latest"
   }
 }
