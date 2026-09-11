@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { score } from "../../core/validation.ts";
 import { execFile } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -149,12 +150,11 @@ export const foundationCases: EvalCase[] = [
   {
     id: "S1-SCORER", title: "Evidence-quality scorer formula", layer: "contracts",
     async run() {
-      return {
-        caseId: "S1-SCORER",
-        status: "blocked",
-        assertions: [],
-        reason: "The evidence-quality scoring formula, weights, and defaults are unspecified; hand-calculated scorer assertions cannot be authored without inventing product policy",
-      };
+      const complete = score({ data:true, definitions:true, counts:true, traceable:true, sample:true, windows:true, coverage:true });
+      const small = score({ data:true, definitions:true, counts:true, traceable:true, sample:false, windows:true, coverage:true });
+      const missing = score({ data:true, definitions:true, counts:true, traceable:false, sample:true, windows:true, coverage:true });
+      const assertions = [a("complete evidence scores 100", complete.trust === 100, complete), a("small sample scores 80", small.trust === 80, small), a("high score cannot bypass missing source", missing.trust === 85 && !missing.mandatory_passed, missing), a("rule version retained", complete.rule_version === "evidence-v1", complete.rule_version)];
+      return { caseId:"S1-SCORER", status:assertions.every(x=>x.passed)?"pass":"fail", assertions };
     },
   },
 ];

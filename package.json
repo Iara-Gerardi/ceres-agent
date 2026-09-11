@@ -16,15 +16,21 @@
     "eval:agent": "node --experimental-strip-types evals/run.ts agent",
     "eval:browser": "node --experimental-strip-types evals/run.ts browser",
     "eval:live": "node --experimental-strip-types evals/run.ts live",
-    "eval:release": "node --experimental-strip-types evals/run.ts release"
+    "eval:release": "node --experimental-strip-types evals/run.ts release",
+    "test": "node --experimental-transform-types --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit --allowImportingTsExtensions",
+    "db:migrate": "node --experimental-transform-types scripts/migrate.ts",
+    "db:seed": "node --experimental-transform-types scripts/seed.ts"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.65",
     "ai": "latest",
     "eve": "latest",
     "pg": "latest",
     "zod": "latest"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@types/node": "latest",
     "@types/pg": "latest",
     "microsandbox": "^0.5.10",

@@ -1,0 +1,15 @@
+[
+ {"visitor":"A","session":"a","event":"tab_visit","group":"My Channels","at":"2026-09-07T10:00:00Z"},
+ {"visitor":"A","session":"a","event":"tab_visit","group":"Discovery","at":"2026-09-07T10:00:00Z"},
+ {"visitor":"B","session":"b","event":"tab_visit","group":"My Channels","at":"2026-09-07T10:00:00Z"},
+ {"visitor":"C","session":"c","event":"tab_visit","group":"Discovery","at":"2026-09-07T10:00:00Z"},
+ {"visitor":"D","session":"d","event":"tab_visit","group":"Search","at":"2026-09-07T10:00:00Z"},
+ {"visitor":"E","session":"e","event":"tab_visit","group":"Search","at":"2026-09-07T10:00:00Z"},
+ {"visitor":"F","session":"f","event":"tab_visit","group":"Search","at":"2026-09-07T10:00:00Z"},
+ {"visitor":"F","session":"f","event":"tab_visit","group":"Discovery","at":"2026-09-07T10:00:00Z"},
+ {"visitor":"A","session":"a","event":"account_created","group":null,"at":"2026-09-07T10:10:00Z"},
+ {"visitor":"B","session":"b2","event":"account_created","group":null,"at":"2026-09-08T10:00:00Z"},
+ {"visitor":"D","session":"d","event":"account_created","group":null,"at":"2026-09-07T10:05:00Z"},
+ {"visitor":"E","session":"e2","event":"account_created","group":null,"at":"2026-09-09T22:00:00Z"},
+ {"visitor":"F","session":"f2","event":"account_created","group":null,"at":"2026-09-07T12:00:00Z"}
+]
