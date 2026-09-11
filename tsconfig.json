@@ -6,5 +6,6 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true
-  }
+  },
+  "exclude": ["evals", "node_modules"]
 }

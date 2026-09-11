@@ -9,7 +9,14 @@
   "scripts": {
     "dev": "eve dev",
     "build": "eve build",
-    "start": "eve start --host 0.0.0.0"
+    "start": "eve start --host 0.0.0.0",
+    "eval:calibration": "EVAL_CALIBRATION_ONLY=1 node --experimental-strip-types --test evals/tests/*.test.ts",
+    "eval:typecheck": "tsc -p evals/tsconfig.json",
+    "eval:contracts": "node --experimental-strip-types evals/run.ts contracts",
+    "eval:agent": "node --experimental-strip-types evals/run.ts agent",
+    "eval:browser": "node --experimental-strip-types evals/run.ts browser",
+    "eval:live": "node --experimental-strip-types evals/run.ts live",
+    "eval:release": "node --experimental-strip-types evals/run.ts release"
   },
   "dependencies": {
     "ai": "latest",
@@ -21,6 +28,7 @@
     "@types/node": "latest",
     "@types/pg": "latest",
     "microsandbox": "^0.5.10",
+    "superpowers": "^0.0.2",
     "typescript": "latest"
   }
 }
