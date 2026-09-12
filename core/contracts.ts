@@ -27,18 +27,15 @@ export const configSchema = z.object({
   research: z.object({ max_attempts: z.number().int().min(0).max(8), max_results: z.number().int().min(1).max(10) }).strict(),
 }).strict();
 export type ProjectConfig = z.infer<typeof configSchema>;
-export type Document = { id: string; workspace_id: string; run_id: string; kind: string; version: number; created_at: string; updated_at: string; [key: string]: unknown };
+export type Document = { id: string; run_id: string; kind: string; version: number; created_at: string; updated_at: string; [key: string]: unknown };
 export interface Store {
   save(run: string, kind: string, body: Record<string, unknown>, operation: string, existing?: { id: string; version: number }): Promise<Document>;
   get(id: string): Promise<Document>;
   list(kind?: string): Promise<Document[]>;
+  history(id: string): Promise<{ snapshot: Document; operation: string; created_at: string }[]>;
 }
 export interface AnalyticsAdapter { read(config: ProjectConfig, period: z.infer<typeof periodSchema>): Promise<{ metrics: Metric[]; snapshot: unknown; usage: z.infer<typeof usageSchema>; failures: string[] }> }
 export interface ResearchAdapter { search(query: string, limit: number): Promise<{ name: string; url: string; content: string }[]> }
 export const decisionSchema = z.object({ action: z.enum(['search', 'stop']), query: z.string().max(2000), reason: z.string().min(1).max(3000), finding_ids: z.array(id).max(50), uncertainties: z.array(z.string().max(2000)).max(30) }).strict();
-export const assessmentSchema = z.object({ assessments:z.array(z.object({ finding_id:id, relevant:z.boolean(), summary:z.string().min(1).max(4000), uncertainty:z.string().max(3000), contradictions:z.array(z.string().max(2000)).max(20) }).strict()).max(10) }).strict();
-export interface Reasoner {
-  assess(context: Record<string, unknown>): Promise<z.infer<typeof assessmentSchema>>;
-  decide(context: Record<string, unknown>): Promise<z.infer<typeof decisionSchema>>;
-  hypothesize(context: Record<string, unknown>): Promise<Candidate>;
-}
+export const findingAssessmentSchema = z.object({ finding_id:id, relevant:z.boolean(), summary:z.string().min(1).max(4000), uncertainty:z.string().max(3000), contradictions:z.array(z.string().max(2000)).max(20) }).strict();
+export const assessmentSchema = z.object({ assessments:z.array(findingAssessmentSchema).max(10) }).strict();

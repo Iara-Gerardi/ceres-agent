@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import type { Pool } from 'pg';
 import { metricSchema, type AnalyticsAdapter, type ProjectConfig, type Metric } from '../core/contracts.ts';
 
 export const eventSchema = z.object({ visitor: z.string().min(1), session: z.string().min(1), event: z.string().min(1), group: z.string().nullable(), at: z.iso.datetime() }).strict();
@@ -24,21 +23,4 @@ export class EventAnalytics implements AnalyticsAdapter {
     const relevant = rows.filter(x => [p.event,p.conversion].includes(x.event) && Date.parse(x.at) >= Date.parse(period.start) && Date.parse(x.at) < cutoff);
     return { metrics, snapshot: { events: rows, parameters: p, period, sample: config.sample }, usage: { used: relevant.length, read: rows.length, exclusions: relevant.length === rows.length ? [] : [`${rows.length-relevant.length} rows outside the event definitions or analysis period`] }, failures };
   }
-}
-/** Query text and event mappings are server configuration, never model-provided SQL. */
-export function postgresAnalytics(pool: Pool, query: string): EventAnalytics {
-  return new EventAnalytics(async (_config, start, end) => {
-    if (query.length > 10000 || !/^select\b/i.test(query.trim()) || query.includes(';')) throw new Error('Invalid analytics definition');
-    const c = await pool.connect();
-    try {
-      await c.query('BEGIN READ ONLY');
-      await c.query("SET LOCAL statement_timeout = '5s'");
-      await c.query("SET LOCAL lock_timeout = '1s'");
-      await c.query(`DECLARE ceres_rows NO SCROLL CURSOR FOR ${query}`, [start, end]);
-      const result = await c.query('FETCH FORWARD 10001 FROM ceres_rows');
-      if (result.rows.length > 10000) throw new Error('Analytics row limit exceeded');
-      await c.query('COMMIT'); return result.rows;
-    } catch { await c.query('ROLLBACK'); throw new Error('Analytics unavailable or query limit exceeded'); }
-    finally { c.release(); }
-  });
 }

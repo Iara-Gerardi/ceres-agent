@@ -10,31 +10,20 @@
     "dev": "eve dev",
     "build": "eve build",
     "start": "eve start --host 0.0.0.0",
-    "eval:calibration": "EVAL_CALIBRATION_ONLY=1 node --experimental-strip-types --test evals/tests/*.test.ts",
-    "eval:typecheck": "tsc -p evals/tsconfig.json",
-    "eval:contracts": "node --experimental-strip-types evals/run.ts contracts",
-    "eval:agent": "node --experimental-strip-types evals/run.ts agent",
-    "eval:browser": "node --experimental-strip-types evals/run.ts browser",
-    "eval:live": "node --experimental-strip-types evals/run.ts live",
-    "eval:release": "node --experimental-strip-types evals/run.ts release",
     "test": "node --experimental-transform-types --test tests/*.test.ts",
     "typecheck": "tsc --noEmit --allowImportingTsExtensions",
-    "db:migrate": "node --experimental-transform-types scripts/migrate.ts",
-    "db:seed": "node --experimental-transform-types scripts/seed.ts"
+    "db:migrate": "node --env-file-if-exists=.env.local --experimental-transform-types scripts/migrate.ts",
+    "db:seed": "node --env-file-if-exists=.env.local --experimental-transform-types scripts/seed.ts"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^4.0.65",
-    "ai": "latest",
     "eve": "latest",
-    "pg": "latest",
+    "pg": "^8.23.0",
     "zod": "latest"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.8",
     "@types/node": "latest",
-    "@types/pg": "latest",
+    "@types/pg": "^8.23.1",
     "microsandbox": "^0.5.10",
-    "superpowers": "^0.0.2",
     "typescript": "latest"
   }
 }

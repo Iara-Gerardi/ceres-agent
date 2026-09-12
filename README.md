@@ -1,27 +1,50 @@
 # Ceres Agent
 
-Ceres implements the backend for GOALS.md roadmap steps 1 and 2: configured analytics, validated saved insights, and bounded Linkup research producing a tentative hypothesis with sources, uncertainty, and a suggested test. The existing Eve interface exposes the tools behind HTTP basic authentication.
+Ceres is a focused marketing-research demo. It analyzes a labeled synthetic event dataset, uses Linkup to investigate a conversion weakness, saves each research step, and produces a tentative hypothesis with sources, uncertainty, and a suggested test.
 
-Use Node.js 24+. Run `npm install`, copy `.env.example` to `.env`, and configure server credentials. The outer Eve agent retains its existing model configuration in `agent/agent.ts`. The internal structured research model uses `OPENAI_API_KEY`, or `AI_GATEWAY_API_KEY` when no direct key is present; `CERES_RESEARCH_MODEL` defaults to `gpt-5.4`.
+The MVP intentionally has one sample project. Analytics use sample events; records can be saved in PostgreSQL or a local file.
 
-1. Provision a PostgreSQL database for Ceres records, separate from analytics. Set `CERES_MIGRATION_DATABASE_URL` to its administrative login.
-2. Run `npm run db:migrate` with environment variables loaded. The migrations create tables, workspace RLS, and a `ceres_runtime` privilege group.
-3. Provision a non-owner, non-superuser login without `BYPASSRLS`, grant it `ceres_runtime`, and put its URL in `CERES_DATABASE_URL`. Do not use the migration login at runtime.
-4. Set `CERES_OWNER_ID`; run `npm run db:seed` and set the printed `CERES_WORKSPACE_ID`. This creates a workspace with the labeled sample configuration. Seed is idempotent and does not overwrite existing configuration.
-5. Set `LINKUP_API_KEY`, model credentials, and basic-auth credentials. Run `npm run dev`.
+## Run locally
 
-The scripts use the process environment. For a local `.env` file, for example: `node --env-file=.env --experimental-transform-types scripts/migrate.ts`, then the corresponding `scripts/seed.ts` command.
+Use Node.js 24+.
 
-Ask: “Using the sample analytics from September 7–10, 2026, research a conversion weakness, investigate a gap from a saved finding, and suggest a test.” The exact sample period is `2026-09-07T00:00:00Z` through `2026-09-10T12:00:00Z`. For analytics without web research, the `request_analysis` tool accepts `research=false`.
+1. Run `npm install`.
+2. Copy `.env.example` to `.env.local` and set Linkup and basic-auth credentials. The outer Eve agent supplies the reasoning model; Ceres does not require a second model API key.
+3. Run `npm run dev` with the environment loaded.
 
-`read_records` exposes records and revision history. `save_candidate` performs validated creation/revision using a stored run. `soft_delete_record` records a reason and excludes the record from current reasoning. Agent tools cannot permanently delete records, submit arbitrary SQL, alter workspace scope, or perform detached Linkup searches.
+To save records in PostgreSQL, set `DATABASE_URL` in `.env.local` and run `npm run db:migrate` before starting the app. The migration is repeatable and creates `ceres_documents` (latest records) and `ceres_document_revisions` (history). Each document has a `kind`, `run_id`, and JSONB `snapshot` containing the full evidence and validation fields. Insights, research findings and assessments, research decisions, hypotheses, analytics snapshots, and workflow state all use the same database. Configured database failures surface as errors; they do not fall back to files.
 
-To connect project data, seed a removable configuration matching `core/contracts.ts` with `sample=false`. Supply `ANALYTICS_DATABASE_URL` using a SELECT-only role on an explicitly approved analytics view, and `CERES_ANALYTICS_QUERY`, a server-owned SELECT using `$1`/`$2` bounds. It must return `visitor`, `session`, `event`, nullable `group`, and ISO UTC text `at`. The view must implement the project's verified anonymous/account identity mapping. The adapter enforces a read-only transaction, five-second query timeout, and 10,000-row maximum. Do not grant analytics privileges to the Ceres storage role or use an analytics administrator login.
+Without `DATABASE_URL`, the default record path is `.eve/ceres-records.jsonl`. Set `CERES_DATA_PATH` to change it. Existing file records are not automatically imported into PostgreSQL.
 
-Run checks with `npm test`, `npm run typecheck`, `npm run eval:calibration`, and `npm run build`. Product tests use a real embedded PostgreSQL engine (PGlite) with migrations, RLS, grants, and transactional failure injection. The pre-existing broader eval harness still has unbound scenario operations; its release gate is not claimed to pass. See [implementation decisions and coverage](docs/foundation-research.md).
+To populate PostgreSQL with a complete mock analysis run, run `npm run db:seed` after migrating. Each invocation adds a new run with insights, research, and a hypothesis, using no external APIs. See the [seed and pgAdmin guide](docs/database-seeding.md) for setup, table navigation, and verification queries.
 
-For an optional real-provider smoke run: `node --env-file=.env --experimental-transform-types scripts/live-research.ts`. It uses synthetic analytics and embedded local storage, makes at most three Linkup calls, and writes an inspectable evidence report under `evals/results/live-local/`. It is not a deployed outsider acceptance test.
+Ask:
 
-Railway continues to use `railway.json`. Configure the same runtime environment, keep basic auth enabled, and attach a volume at `/app/.eve/.workflow-data` for Eve's workflows. Run database migrations separately before starting the service.
+> Using the sample analytics from September 7–10, 2026, research a conversion weakness, investigate a gap from a saved finding, and suggest a test.
 
-Public visitor sessions, deployment acceptance, monitoring, scheduler, automated revalidation, and cleanup remain roadmap steps 3–4.
+The exact sample period is `2026-09-07T00:00:00Z` through `2026-09-10T12:00:00Z`. The agent advances the server-enforced `analysis_workflow` one transition at a time. For analytics without web research, its `start` action accepts `research=false`. The `read_records` tool exposes the saved evidence and revision history.
+
+## What the demo proves
+
+- Conversion metrics retain their numerator, eligible denominator, population, and period.
+- External research cannot replace missing analytics.
+- Findings are saved before they can influence a follow-up search.
+- Tool order, state versions, evidence references, and research budgets are enforced server-side.
+- Linkup calls are bounded and repeated or empty research stops early.
+- Final hypotheses cite stored evidence, preserve uncertainty, and suggest a test without claiming causality.
+
+## Verification and deployment
+
+Run `npm test`, `npm run typecheck`, and `npm run build`.
+
+To run the workflow and persistence tests against PostgreSQL, use `TEST_DATABASE_URL=postgresql://... npm test`. Tests create and remove isolated schemas; the test user needs schema-creation privileges. Without this variable, workflow tests use files and the Postgres-specific test is skipped.
+
+For an optional real-provider smoke run:
+
+```sh
+node --env-file=.env.local --experimental-transform-types scripts/live-research.ts
+```
+
+Railway uses `railway.json`. Set `DATABASE_URL` to the Postgres service connection URL and run the migration with that environment before deploying. For file storage, mount a persistent volume at `/app/.eve` and set `CERES_DATA_PATH=/app/.eve/ceres-records.jsonl`.
+
+Connecting real analytics, multi-project administration, public visitor isolation, scheduling, automatic revalidation, and cleanup are explicitly deferred until the demo validates demand.

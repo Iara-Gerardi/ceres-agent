@@ -1,52 +1,75 @@
-import type { Pool, PoolClient } from 'pg';
-import { id, uuid7, type Store, type Document } from '../core/contracts.ts';
+import { Pool } from 'pg';
+import { id, uuid7, type Document, type Store } from '../core/contracts.ts';
 
-/** Context is bound by the server, never taken from model/tool input. */
+/** Current documents and an immutable revision trail, committed together. */
 export class PostgresStore implements Store {
-  constructor(private pool: Pool, private workspace: string, private owner: string, private now = () => new Date()) { id.parse(workspace); }
-  private async transaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
-    const c = await this.pool.connect();
-    try {
-      await c.query('BEGIN');
-      await c.query("SELECT set_config('ceres.workspace_id',$1,true)", [this.workspace]);
-      const w = await c.query('SELECT id FROM ceres.workspaces WHERE id=$1 AND owner_id=$2 AND (expires_at IS NULL OR expires_at > $3) FOR SHARE', [this.workspace, this.owner, this.now().toISOString()]);
-      if (!w.rowCount) throw new Error('Workspace unavailable');
-      const result = await fn(c); await c.query('COMMIT'); return result;
-    } catch { await c.query('ROLLBACK'); throw new Error('Scoped persistence operation rejected'); }
-    finally { c.release(); }
-  }
+  constructor(private pool: Pool, private now = () => new Date()) {}
+
   async save(run: string, kind: string, body: Record<string, unknown>, operation: string, existing?: {id:string;version:number}): Promise<Document> {
     id.parse(run); if (existing) id.parse(existing.id);
-    if (!operation || operation.length > 200 || JSON.stringify(body).length > 500_000) throw new Error('Invalid persistence input');
-    return this.transaction(async c => {
-      await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [this.workspace + operation]);
-      const retry = await c.query('SELECT snapshot FROM ceres.history WHERE workspace_id=$1 AND operation=$2', [this.workspace, operation]);
-      if (retry.rowCount) return retry.rows[0].snapshot;
-      let previous: Document | undefined;
-      if (existing) {
-        const row = await c.query('SELECT body FROM ceres.documents WHERE workspace_id=$1 AND id=$2 FOR UPDATE', [this.workspace, existing.id]);
-        previous = row.rows[0]?.body;
-        if (!previous || previous.version !== existing.version || previous.kind !== kind) throw new Error('Revision conflict');
+    if (!kind || !operation || operation.length > 200 || JSON.stringify(body).length > 500_000) throw new Error('Invalid persistence input');
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      // Serialize retries of an operation even when they arrive on different connections.
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [operation]);
+      const retry = await client.query<{snapshot:Document}>('SELECT snapshot FROM ceres_document_revisions WHERE operation = $1', [operation]);
+      if (retry.rows[0]) {
+        await client.query('COMMIT');
+        return retry.rows[0].snapshot;
       }
-      const at = this.now().toISOString();
-      const doc: Document = { ...body, id: previous?.id ?? uuid7(this.now().getTime()), workspace_id: this.workspace, run_id: run, kind, version: (previous?.version ?? 0) + 1, created_at: previous?.created_at ?? at, updated_at: at };
-      await c.query('INSERT INTO ceres.documents(workspace_id,id,run_id,kind,version,body) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(workspace_id,id) DO UPDATE SET version=excluded.version,body=excluded.body', [this.workspace,doc.id,run,kind,doc.version,doc]);
-      await c.query('INSERT INTO ceres.history(workspace_id,id,document_id,run_id,operation,version,snapshot) VALUES($1,$2,$3,$4,$5,$6,$7)', [this.workspace,uuid7(),doc.id,run,operation,doc.version,doc]);
-      return doc;
-    });
+      const previous = existing
+        ? (await client.query<{snapshot:Document}>('SELECT snapshot FROM ceres_documents WHERE id = $1 FOR UPDATE', [existing.id])).rows[0]?.snapshot
+        : undefined;
+      if (existing && (!previous || previous.version !== existing.version || previous.kind !== kind || previous.run_id !== run)) throw new Error('Revision conflict');
+      const at = this.now();
+      const snapshot: Document = {
+        ...body, id: previous?.id ?? uuid7(at.getTime()), run_id: run, kind,
+        version: (previous?.version ?? 0) + 1,
+        created_at: previous?.created_at ?? at.toISOString(), updated_at: at.toISOString(),
+      };
+      if (previous) {
+        await client.query('UPDATE ceres_documents SET version = $2, snapshot = $3 WHERE id = $1', [snapshot.id, snapshot.version, snapshot]);
+      } else {
+        await client.query('INSERT INTO ceres_documents (id, run_id, kind, version, snapshot) VALUES ($1, $2, $3, $4, $5)', [snapshot.id, run, kind, snapshot.version, snapshot]);
+      }
+      await client.query('INSERT INTO ceres_document_revisions (operation, document_id, version, created_at, snapshot) VALUES ($1, $2, $3, $4, $5)', [operation, snapshot.id, snapshot.version, snapshot.updated_at, snapshot]);
+      await client.query('COMMIT');
+      return snapshot;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
+
   async get(recordId: string): Promise<Document> {
     id.parse(recordId);
-    return this.transaction(async c => {
-      const r = await c.query('SELECT body FROM ceres.documents WHERE workspace_id=$1 AND id=$2', [this.workspace,recordId]);
-      if (!r.rowCount) throw new Error('Record unavailable'); return r.rows[0].body;
-    });
+    const result = await this.pool.query<{snapshot:Document}>('SELECT snapshot FROM ceres_documents WHERE id = $1', [recordId]);
+    if (!result.rows[0]) throw new Error('Record unavailable');
+    return result.rows[0].snapshot;
   }
+
   async list(kind?: string): Promise<Document[]> {
-    return this.transaction(async c => (await c.query('SELECT body FROM ceres.documents WHERE workspace_id=$1 AND ($2::text IS NULL OR kind=$2) ORDER BY id LIMIT 1000',[this.workspace,kind ?? null])).rows.map(x => x.body));
+    const result = await this.pool.query<{snapshot:Document}>(
+      'SELECT snapshot FROM ceres_documents WHERE ($1::text IS NULL OR kind = $1) ORDER BY id LIMIT 1000', [kind || null],
+    );
+    return result.rows.map(row => row.snapshot);
   }
+
   async history(recordId: string) {
     id.parse(recordId);
-    return this.transaction(async c => (await c.query('SELECT snapshot,operation,created_at FROM ceres.history WHERE workspace_id=$1 AND document_id=$2 ORDER BY version', [this.workspace, recordId])).rows);
+    const result = await this.pool.query<{snapshot:Document;operation:string}>(
+      'SELECT snapshot, operation FROM ceres_document_revisions WHERE document_id = $1 ORDER BY version', [recordId],
+    );
+    return result.rows.map(row => ({...row, created_at:row.snapshot.updated_at}));
   }
+}
+
+export function createPostgresPool(connectionString: string): Pool {
+  const pool = new Pool({connectionString, max:10, connectionTimeoutMillis:5000, idleTimeoutMillis:30000, allowExitOnIdle:true});
+  // Idle connection failures should not terminate the server or expose credentials.
+  pool.on('error', () => console.error('Ceres PostgreSQL idle connection failed'));
+  return pool;
 }
