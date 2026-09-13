@@ -16,15 +16,16 @@ The product should optimize for a compelling, inspectable workflow rather than r
 6. Use a saved finding to choose a follow-up search.
 7. Stop when evidence is sufficient, adds little value, or reaches the configured budget.
 8. Save and present a tentative hypothesis with sources and a suggested test.
+9. Save a linked experiment proposal, check the agent's available tools, and explain the proposed changes when no suitable action tool exists. The demo has no external action tool.
 
 ## MVP boundaries
 
 - One built-in, clearly labeled synthetic dataset.
 - One authenticated deployment with no workspaces or multi-tenancy.
-- Append-only local JSONL persistence for runs and evidence.
+- PostgreSQL document persistence, with local JSONL storage when no database is configured, for runs, evidence, and experiment proposals.
 - Live Linkup research with a maximum attempt budget.
 - No external analytics database or user-supplied SQL.
-- No managed experiments, schedulers, monitoring, lifecycle automation, or public visitor sessions.
+- Experiment proposals only; no experiment execution, result tracking, schedulers, monitoring, lifecycle automation, or public visitor sessions.
 - No arbitrary record editing or deletion through agent tools.
 
 ## Quality requirements

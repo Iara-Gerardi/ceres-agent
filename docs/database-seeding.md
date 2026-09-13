@@ -17,7 +17,7 @@ npm run db:seed
 
 The seed runs the actual analysis workflow using bundled synthetic events and a mock research provider. It needs no Linkup or model API key and makes no external research requests. Each invocation adds a new completed mock run, preserving existing records. It does not deduplicate previous seeds. If interrupted, partial records can remain; rerunning starts a new run.
 
-Success prints `"status": "seeded"`, the database and schema names, a `run_id`, counts by kind, and the revision count. Copy that run ID to inspect just this seed. Expect six insights, one finding, one hypothesis, and supporting analytics, run, workflow state, research decision, provider attempt, and stop records. The provider attempt is a workflow audit record; the research call itself is mocked. Findings include both pending and assessed revisions in history. Validation scores and activation are calculated normally; mock evidence is not proof of a real effect.
+Success prints `"status": "seeded"`, the database and schema names, a `run_id`, counts by kind, and the revision count. Copy that run ID to inspect just this seed. Expect six insights, one finding, one hypothesis, one experiment proposal, and supporting analytics, run, workflow state, research decision, provider attempt, and stop records. The provider attempt is a workflow audit record; the research call itself is mocked. Findings include both pending and assessed revisions in history. Validation scores and activation are calculated normally; mock evidence is not proof of a real effect. The experiment is proposed with a manual handoff; no external changes are made.
 
 ## Find the tables in pgAdmin
 
@@ -64,3 +64,17 @@ WHERE run_id = 'PASTE_RUN_ID_HERE'::uuid AND kind = 'run';
 ```
 
 This should return one row with `status = completed` and saved insight, finding, and hypothesis IDs. If you see no rows, verify the selected database with `SELECT current_database(), current_schema();` and compare with the seed output. Check that the query uses the exact printed run ID. A missing-table error means the selected database/schema has not been migrated.
+
+Experiments are saved after analysis completes and link to the run and hypothesis:
+
+```sql
+SELECT id, snapshot->>'title' AS title,
+       snapshot->>'hypothesis_id' AS hypothesis_id,
+       snapshot->>'status' AS status,
+       snapshot->>'execution_status' AS execution_status,
+       snapshot->>'handoff' AS handoff,
+       snapshot->'changes' AS changes,
+       snapshot->'capability_check' AS capability_check
+FROM public.ceres_documents
+WHERE run_id = 'PASTE_RUN_ID_HERE'::uuid AND kind = 'experiment';
+```

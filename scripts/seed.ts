@@ -2,6 +2,7 @@ import { EventAnalytics } from '../adapters/analytics.ts';
 import { PostgresStore, createPostgresPool } from '../adapters/postgres-store.ts';
 import { configSchema } from '../core/contracts.ts';
 import { AnalysisWorkflow } from '../core/workflow.ts';
+import { saveExperiment } from '../core/experiments.ts';
 import config from '../config/sample.json' with {type:'json'};
 import events from '../config/sample-events.json' with {type:'json'};
 
@@ -44,6 +45,18 @@ try {
       category:'conversion',uncertainties:['Small synthetic sample; fictional research.']},
   }));
   if (state.phase !== 'completed') throw new Error('Seed did not complete');
+  if (!('hypothesis' in state) || !state.hypothesis) throw new Error('Seed hypothesis unavailable');
+  await saveExperiment(store, {
+    hypothesis_id:state.hypothesis.id,title:'MOCK: shorter account creation form',
+    audience:'Synthetic Search visitors eligible for the 48-hour conversion metric',
+    changes:[{target:'MOCK signup form',control:'Assumed existing form; verify its fields before implementation',
+      treatment:'Defer optional fields until after account creation',reason:'Test the fictional form-friction hypothesis'}],
+    primary_metric:'Search/48h',
+    success_criterion:'Compare eligible visitor account creation within 48 hours between control and treatment; define sample size before launch.',
+    guardrails:['Monitor account creation errors and downstream account quality'],
+    uncertainties:['Synthetic demo only; actual form fields and traffic are not configured.'],
+    capability_check:{tool_name:null,reason:'The demo has no external action tool; these changes require manual implementation.'},
+  });
   const counts = await pool.query<{kind:string;count:number}>(
     'SELECT kind, count(*)::int AS count FROM ceres_documents WHERE run_id = $1 GROUP BY kind ORDER BY kind', [state.run_id],
   );

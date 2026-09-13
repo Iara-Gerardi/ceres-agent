@@ -1,6 +1,6 @@
 # Ceres Agent
 
-Ceres is a focused marketing-research demo. It analyzes a labeled synthetic event dataset, uses Linkup to investigate a conversion weakness, saves each research step, and produces a tentative hypothesis with sources, uncertainty, and a suggested test.
+Ceres is a focused marketing-research demo. It analyzes a labeled synthetic event dataset, uses Linkup to investigate a conversion weakness, saves each research step, and produces a tentative hypothesis and a persisted experiment proposal with sources and uncertainty.
 
 The MVP intentionally has one sample project. Analytics use sample events; records can be saved in PostgreSQL or a local file.
 
@@ -20,9 +20,17 @@ To populate PostgreSQL with a complete mock analysis run, run `npm run db:seed` 
 
 Ask:
 
-> Using the sample analytics from September 7–10, 2026, research a conversion weakness, investigate a gap from a saved finding, and suggest a test.
+> Using the sample analytics from September 7–10, 2026, research a conversion weakness, investigate a gap from a saved finding, and save an experiment. Check whether you have a tool to apply the changes; otherwise explain what you would change.
 
 The exact sample period is `2026-09-07T00:00:00Z` through `2026-09-10T12:00:00Z`. The agent advances the server-enforced `analysis_workflow` one transition at a time. For analytics without web research, its `start` action accepts `research=false`. The `read_records` tool exposes the saved evidence and revision history.
+
+## Experiment proposals
+
+After completing research, the agent uses `save_experiment` to persist a proposal linked to the current hypothesis. Experiments include the audience, control and treatment changes, rationale, primary metric, success criterion, guardrails, inherited evidence IDs and uncertainties, and the agent's assessment of available action tools. Unknown page content or product behavior must be labeled as assumptions.
+
+With `DATABASE_URL`, experiments are stored in `ceres_documents` with `kind = 'experiment'`, alongside their revision history in `ceres_document_revisions`. The existing migration already supports this kind. Without PostgreSQL, they use the same local file store as other records. Use `read_records` with `kind = 'experiment'` to inspect proposals. Identical submissions against the same hypothesis version are idempotent; different proposals can share a hypothesis. Saved experiments remain historical proposals even if their hypothesis later expires.
+
+The agent checks its actual session tools for one capable of making the proposed changes. The demo has no external action tool, so it records a manual handoff and explains what the user would change. A reported tool match in a future session is an agent assessment, not server-verified capability or proof of execution. Saving always sets `status = 'proposed'` and `execution_status = 'not_started'`; this feature does not execute, track, or evaluate experiments.
 
 ## What the demo proves
 
