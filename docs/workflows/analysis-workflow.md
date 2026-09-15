@@ -1,68 +1,52 @@
 # Analysis workflow
 
-Yes. The analysis workflow is implemented as a persisted, server-enforced state machine. A client submits one action at a time to `AnalysisWorkflow.transition()`. The workflow loads the current `workflow_state`, validates that the action is legal for its `phase`, performs the work, saves a new state version, and returns `next_actions`.
-
-The state-machine model applies to `AnalysisWorkflow`; it is not necessarily a property of every workflow in the codebase. Some transitions also perform side effects—reading analytics, querying Linkup, and saving evidence—so this is a stateful workflow orchestrator rather than a pure in-memory finite-state machine.
+`AnalysisWorkflow` is a persisted, server-enforced evidence-review state machine. A client submits one action at a time with the current `run_id` and `state_version`. The workflow validates the action, performs any persistence or Linkup operation, saves a new state revision, and returns the permitted `next_actions`.
 
 ```mermaid
 stateDiagram-v2
-    direction LR
-
-    [*] --> Start: start
-
-    Start --> Failed: analytics read fails
-    Start --> Completed: research=false or no usable metric
-    Start --> ReadyForHypothesis: max_attempts = 0
-    Start --> AnalyticsReady: research enabled and budget available
-
-    AnalyticsReady --> FindingsReady: submit_query / new findings
-    AnalyticsReady --> ReadyForHypothesis: submit_query / empty, duplicate-only, or provider error
-
+    [*] --> ResearchPlanning: start / usable analytics
+    [*] --> Completed: start / research disabled
+    [*] --> Failed: analytics failure
+    ResearchPlanning --> AnalyticsReady: plan_research
+    AnalyticsReady --> FindingsReady: submit_query / findings
+    AnalyticsReady --> FindingsAssessed: submit_query / empty, budget remains
+    AnalyticsReady --> ReadyForHypothesis: submit_query / failure or exhausted
+    FindingsReady --> FindingsReady: fetch_sources
     FindingsReady --> FindingsAssessed: assess_findings / budget remains
-    FindingsReady --> ReadyForHypothesis: assess_findings / budget exhausted
-
-    FindingsAssessed --> FindingsReady: submit_query / new findings
-    FindingsAssessed --> ReadyForHypothesis: submit_query / empty, duplicate-only, or provider error
-    FindingsAssessed --> Completed: submit_hypothesis / allowed stop
-
+    FindingsReady --> ReadyForHypothesis: assess_findings / exhausted
+    FindingsAssessed --> FindingsReady: submit_query / findings
+    FindingsAssessed --> FindingsAssessed: submit_query / empty, budget remains
+    FindingsAssessed --> ReadyForHypothesis: submit_query / failure or exhausted
+    FindingsAssessed --> Completed: submit_hypothesis
+    FindingsAssessed --> Completed: complete_without_hypothesis
     ReadyForHypothesis --> Completed: submit_hypothesis
-
-    Completed --> [*]
-    Failed --> [*]
-
-    state "analytics_ready" as AnalyticsReady
-    state "findings_ready" as FindingsReady
-    state "findings_assessed" as FindingsAssessed
-    state "ready_for_hypothesis" as ReadyForHypothesis
-    state "completed" as Completed
-    state "failed run outcome" as Failed
+    ReadyForHypothesis --> Completed: complete_without_hypothesis
 ```
 
-## What each state means
-
-| State | Meaning | Returned next actions |
+| State | Meaning | Typical next actions |
 | --- | --- | --- |
-| `analytics_ready` | Analytics and derived insights are saved; an initial research query can be made. | `submit_query` |
-| `findings_ready` | A query returned new findings, and every pending finding must be assessed. | `assess_findings` |
-| `findings_assessed` | The latest batch is assessed. More research may be possible; a hypothesis is offered only when the follow-up rule permits it. | `submit_query`, sometimes `submit_hypothesis` |
-| `ready_for_hypothesis` | Research cannot or should not continue because of a forced stop condition. | `submit_hypothesis` |
-| `completed` | The run is finalized and has no further actions. | none |
+| `research_planning` | Analytics exist; atomic claims and missing-information gaps must be persisted. | `plan_research` |
+| `analytics_ready` | The plan exists and an initial gap-directed query can run. | `submit_query` |
+| `findings_ready` | Every pending result needs assessment; decisive pages may be fetched first. | `fetch_sources`, `assess_findings` |
+| `findings_assessed` | The batch is reviewed. More research, a bounded hypothesis, or an inconclusive completion may follow. | `submit_query`, `submit_hypothesis`, `complete_without_hypothesis` |
+| `ready_for_hypothesis` | A provider outcome or budget ended retrieval. | `submit_hypothesis`, `complete_without_hypothesis` |
+| `completed` | The run has a hypothesis or a research conclusion and no further actions. | none |
 
-`failed` is a terminal run result when initial analytics processing throws; it is not one of the persisted `Phase` values.
+The research plan assigns each claim a role: `observation`, `external_fact`, `inference`, or `assumption`. Observations must exactly match and cite one of the run's server-generated insights; other roles begin without a source. Every plan needs a decisive research claim beyond the observation. Gaps record affected claims, importance, resolution method, and purpose. Every plan also needs a web-search `challenge` gap tied to a decisive research claim so a preferred explanation cannot satisfy the completion policy without a counterevidence search.
 
-## Important guards
+Searches must reference open `web_search` gaps. An initial search cannot cite findings. Once a relevant finding exists, the mandatory first follow-up cites one. If the first result set is empty or all results are irrelevant, the agent can reformulate against the same open gap while budget remains. Each search may choose validated `standard` or `deep` depth and optional include-domain, exclude-domain, and date filters; the chosen options are saved in the decision and provider-attempt records.
 
-- Every action after `start` must include the returned `run_id` and `state_version` as `expected_version`. A stale version is rejected.
-- The initial query must have an empty `based_on_ids`. A follow-up query must cite at least one assessed, relevant finding from the same run.
-- Every pending finding must be assessed exactly once before another query or a hypothesis.
-- If an initial assessment produces a relevant finding and the budget allows two attempts, one referenced follow-up query is mandatory.
-- A hypothesis must cite the run's analytics. If relevant findings exist, it must also cite at least one of them.
-- Repeated queries, exhausted budgets, invalid action ordering, unknown evidence, and cross-run evidence are rejected.
+`fetch_sources` retrieves full page text for selected pending findings. Search and Fetch have separate configured budgets. Fetch failures are recorded and do not prevent assessment of an available search excerpt.
 
-## Stop reasons
+Every pending finding is assessed exactly once. Relevant findings require claim-level evidence. A supported, refuted, or mixed verdict must include an exact passage contained in the saved search result or its related fetched document. The server validates this reference and substring relationship; the model still supplies the semantic judgment, source type, publication date, original-source identity, and independence assessment. A gap can only be resolved with new evidence retrieved for that gap.
 
-The workflow can enforce `analytics_only`, `budget_reached`, `empty_results`, `diminishing_value`, or `provider_error`. When it has not already enforced a reason, hypothesis submission must choose either `sufficient_evidence` or `diminishing_value`.
+Research status is separate from the stop reason and from the existing analytics `trust` score:
 
-Transitions through one `AnalysisWorkflow` instance are serialized in-process, while optimistic version checks protect the persisted state. The file store also records append-only revisions and idempotency keys. Together, these make the workflow auditable and prevent two callers using the same state version through that workflow instance from both advancing a run.
+- `supported` requires every decisive claim to be supported, no open blocking gap, and a challenge gap that was both searched and resolved.
+- `partial` means the run contains reviewed evidence but does not satisfy all supported requirements.
+- `inconclusive` means no reviewed evidence supports a bounded conclusion.
+- `not_requested` is used only for analytics-only runs where web research was disabled.
 
-When `DATABASE_URL` is set, the runtime uses PostgreSQL for every record, including insights created by `start`, findings saved by `submit_query` and revised by `assess_findings`, and hypotheses saved by `submit_hypothesis`. Analytics-only runs save insights but do not submit a hypothesis. Run `npm run db:migrate` before using this backend. The Postgres store commits each document and its revision atomically, serializes operation retries, and rejects conflicting document versions. A whole workflow transition and its external provider call are not a single database transaction; transition serialization still applies within one workflow instance.
+`sufficient_evidence` is accepted only for `supported` research. Provider failure, empty results, and budget exhaustion cannot imply sufficiency. `complete_without_hypothesis` persists an honest conclusion when no useful hypothesis is justified. A partial or inconclusive hypothesis is marked for exploratory experiments; confirmatory experiment intent requires supported research.
+
+All claims, gaps, fetched documents, evidence assessments, overall research assessments, conclusions, findings, decisions, provider attempts, and state revisions use the generic document store. PostgreSQL commits each document revision atomically. A whole workflow transition and its provider calls are not a single database transaction, so the in-process transition lock and optimistic state version remain important.

@@ -2,5 +2,5 @@
   "version": "sample-v1", "name": "Sample channel conversion", "sample": true,
   "analytics": { "event": "tab_visit", "conversion": "account_created", "groups": ["My Channels", "Discovery", "Search"], "windows_hours": [48], "identity_linking": true },
   "validation": { "version": "evidence-v1", "minimum_sample": 30, "ttq_hours": 168 },
-  "research": { "max_attempts": 3, "max_results": 5 }
+  "research": { "max_attempts": 3, "max_results": 5, "max_fetches": 2 }
 }

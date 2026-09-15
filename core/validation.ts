@@ -40,5 +40,8 @@ export async function saveCandidate(store: Store, config: ProjectConfig, run: st
   if (!structure) validation.reasons.push('Suggested test required');
   if (candidate.kind === 'insight' && validation.trust < 80) validation.reasons.push('Evidence quality below 80');
   if (existing) { const prior = await store.get(existing.id); if (prior.deleted_at || prior.manually_invalidated) throw new Error('Record cannot be automatically restored'); }
-  return store.save(run,candidate.kind, { ...candidate, generation_mode: 'requested', trust: validation.trust, validation, active, inactive_reason: active ? null : validation.reasons.join('; '), review_due_at: new Date(now.getTime()+config.validation.ttq_hours*3600000).toISOString(), deleted_at: null, deletion_reason: null, sources, metric_observations: metrics, evidence_usage: usage },operation,existing);
+  return store.save(run,candidate.kind, { ...candidate, generation_mode: 'requested', trust: validation.trust,
+    analytics_evidence_quality:validation.trust,validation,active,inactive_reason:active ? null : validation.reasons.join('; '),
+    review_due_at:new Date(now.getTime()+config.validation.ttq_hours*3600000).toISOString(),deleted_at:null,deletion_reason:null,
+    sources,metric_observations:metrics,evidence_usage:usage },operation,existing);
 }

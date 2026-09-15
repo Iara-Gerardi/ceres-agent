@@ -15,7 +15,7 @@ test('versioned scoring matches hand calculation and mandatory evidence gates ac
  const run=uuid7();const evidence=await d.store.save(run,'analytics',{metrics:[metric],usage:{used:30,read:50,exclusions:['20 unrelated records']},failures:[]},'evidence');
  const draft={kind:'insight',statement:'Observed conversion',source_ids:[evidence.id],key_metrics:['conversion']};
  const rejected=await saveCandidate(d.store,config,run,draft,'candidate-a');
- assert.equal(rejected.trust,70);assert.equal(rejected.active,false);
+ assert.equal(rejected.trust,70);assert.equal(rejected.analytics_evidence_quality,70);assert.equal(rejected.active,false);
  const hypothesis=await saveCandidate(d.store,config,run,{...draft,kind:'hypothesis',suggested_test:'Simplify onboarding and observe conversion'},'candidate-b');
  assert.equal(hypothesis.active,true);
  const missing=await saveCandidate(d.store,config,run,{...draft,source_ids:[uuid7()]},'candidate-c');

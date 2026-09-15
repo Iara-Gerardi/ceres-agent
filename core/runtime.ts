@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { configSchema } from './contracts.ts';
 import { FileStore } from '../adapters/file-store.ts';
 import { PostgresStore, createPostgresPool } from '../adapters/postgres-store.ts';
-import { EventAnalytics } from '../adapters/analytics.ts';
+import { EventAnalytics, SYNTHETIC_MOCK_ANALYTICS_SOURCE } from '../adapters/analytics.ts';
 import { Linkup } from '../adapters/linkup.ts';
 import { AnalysisWorkflow } from './workflow.ts';
 let runtime: ReturnType<typeof createRuntime> | undefined;
@@ -17,7 +17,7 @@ async function createRuntime() {
     catch (error) { await pool.end(); throw error; }
   }
   const store = pool ? new PostgresStore(pool) : new FileStore(path);
-  const analytics = new EventAnalytics(async () => sampleEvents);
+  const analytics = new EventAnalytics(async () => sampleEvents,SYNTHETIC_MOCK_ANALYTICS_SOURCE);
   const workflow = new AnalysisWorkflow(store,analytics,new Linkup(process.env.LINKUP_API_KEY ?? ''),config);
   return {store,workflow};
 }
